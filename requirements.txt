@@ -1,0 +1,30 @@
+# Core FastAPI and web framework dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+pydantic==2.5.0
+
+# Git operations
+GitPython==3.1.40
+
+# HTTP client for LLM API calls
+aiohttp==3.9.1
+
+# Environment variable management
+python-dotenv==1.0.0
+
+# Document conversion dependencies
+markdown==3.5.1
+python-docx==0.8.11
+
+# Code parsing
+javalang==0.13.0
+
+# OpenAI for LLM documentation generation (v0.28 for compatibility)
+openai==0.28.1
+
+# Development dependencies (optional)
+# pytest==7.4.3
+# pytest-asyncio==0.21.1
+# black==23.11.0
+# flake8==6.1.0
