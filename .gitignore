@@ -57,4 +57,4 @@ frontend/build/
 frontend/.env
 
 # Generated documentation
-documentation-generated/
+backend/documentation-generated/
