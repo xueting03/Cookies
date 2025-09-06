@@ -78,19 +78,21 @@ class DocumentConverter:
                 # Handle bullet points
                 elif line.startswith('- ') or line.startswith('* '):
                     bullet_text = line[2:].strip()
-                    doc.add_paragraph(bullet_text, style='List Bullet')
+                    bullet_para = doc.add_paragraph(style='List Bullet')
+                    self._add_text_with_links(bullet_para, bullet_text)
                 
                 # Handle numbered lists
                 elif re.match(r'^\d+\.\s', line):
                     numbered_text = re.sub(r'^\d+\.\s', '', line)
-                    doc.add_paragraph(numbered_text, style='List Number')
+                    numbered_para = doc.add_paragraph(style='List Number')
+                    self._add_text_with_links(numbered_para, numbered_text)
                 
                 # Regular paragraphs
                 else:
-                    # Handle inline code and formatting
-                    clean_text = self._clean_markdown_formatting(line)
-                    if clean_text:
-                        doc.add_paragraph(clean_text)
+                    # Handle inline code and formatting - preserve links
+                    if line:
+                        para = doc.add_paragraph()
+                        self._add_text_with_links(para, line)
             
             # Save document
             doc.save(output_path)
@@ -101,6 +103,74 @@ class DocumentConverter:
             logger.error(f"Error converting to Word: {str(e)}")
             raise
     
+    def _add_text_with_links(self, paragraph, text: str):
+        """Add text to paragraph while preserving hyperlinks for Word."""
+        from docx.oxml import parse_xml
+        from docx.oxml.ns import nsdecls
+        
+        # Find all markdown links in the text
+        link_pattern = r'\[([^\]]+)\]\(([^)]+)\)'
+        last_end = 0
+        
+        for match in re.finditer(link_pattern, text):
+            # Add text before the link
+            before_link = text[last_end:match.start()]
+            if before_link:
+                run = paragraph.add_run(self._clean_markdown_formatting_no_links(before_link))
+            
+            # Add the hyperlink
+            link_text = match.group(1)
+            link_url = match.group(2)
+            
+            # Create proper hyperlink in Word
+            try:
+                # For file:/// links, format them properly for Word
+                if link_url.startswith('file:///'):
+                    # Word prefers this format
+                    formatted_url = link_url
+                else:
+                    formatted_url = link_url
+                
+                # Create a proper Word hyperlink with line break for clickability
+                hyperlink_run = paragraph.add_run(link_text)
+                hyperlink_run.font.color.rgb = None  # Default hyperlink color (blue)
+                hyperlink_run.font.underline = True
+                
+                # Add line break after link to make it clickable
+                paragraph.add_run("\n")
+                
+                # Add URL in parentheses for reference
+                url_run = paragraph.add_run(f"({formatted_url})")
+                url_run.font.size = url_run.font.size * 0.9 if url_run.font.size else None  # Smaller font
+                
+                # Add another line break for spacing
+                paragraph.add_run("\n")
+                
+            except Exception as e:
+                # Fallback: add link text with URL and line breaks
+                paragraph.add_run(f"{link_text}\n{link_url}\n\n")
+            
+            last_end = match.end()
+        
+        # Add remaining text after the last link
+        remaining_text = text[last_end:]
+        if remaining_text:
+            run = paragraph.add_run(self._clean_markdown_formatting_no_links(remaining_text))
+    
+    def _clean_markdown_formatting_no_links(self, text: str) -> str:
+        """Remove basic markdown formatting except links for Word conversion."""
+        # Remove inline code backticks
+        text = re.sub(r'`([^`]+)`', r'\1', text)
+        
+        # Remove bold/italic markers
+        text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+        text = re.sub(r'\*([^*]+)\*', r'\1', text)
+        text = re.sub(r'__([^_]+)__', r'\1', text)
+        text = re.sub(r'_([^_]+)_', r'\1', text)
+        
+        # Don't remove links here - handle them separately
+        return text
+
     def _clean_markdown_formatting(self, text: str) -> str:
         """Remove basic markdown formatting for Word conversion."""
         # Remove inline code backticks
@@ -112,7 +182,7 @@ class DocumentConverter:
         text = re.sub(r'__([^_]+)__', r'\1', text)
         text = re.sub(r'_([^_]+)_', r'\1', text)
         
-        # Remove links (keep text only)
+        # Remove links (keep text only) - LEGACY METHOD
         text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
         
         return text

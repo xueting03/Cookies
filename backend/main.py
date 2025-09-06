@@ -101,6 +101,11 @@ def scan_repository(repo_path: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Repository scan failed: {str(e)}")
 
+@app.post("/generate-complete-repo-docs-for-word")
+def generate_complete_repo_docs_for_word(repo_path: str, output_file: str = "Complete_Repository_Documentation_Word.md"):
+    """Generate comprehensive documentation specifically formatted for Word conversion"""
+    return generate_complete_repo_docs(repo_path, output_file, target_format="word")
+
 @app.get("/analyze-functions")
 def analyze_functions(file_path: str, repo_path: str, language: str):
     """Analyze functions in a specific file without generating documentation"""
@@ -142,7 +147,7 @@ def analyze_functions(file_path: str, repo_path: str, language: str):
 # ===== DOCUMENTATION GENERATION =====
 
 @app.post("/generate-docs")
-def generate_docs(file_path: str, repo_path: str, language: str, last_doc_commit_hash: Optional[str] = None):
+def generate_docs(file_path: str, repo_path: str, language: str, last_doc_commit_hash: Optional[str] = None, target_format: str = "markdown"):
     """Generate AI-powered documentation for functions in a specific file"""
     try:
         # Normalize and validate language
@@ -171,7 +176,7 @@ def generate_docs(file_path: str, repo_path: str, language: str, last_doc_commit
                 
                 # Generate AI documentation (with fallback)
                 try:
-                    summary = doc_generator.generate_function_doc(func)
+                    summary = doc_generator.generate_function_doc(func, target_format)
                 except Exception:
                     # Fallback template
                     summary = f"""# {func.name}
@@ -224,7 +229,7 @@ Function '{func.name}' with {len(func.params)} parameter(s)
         raise HTTPException(status_code=500, detail=f"Documentation generation failed: {str(e)}")
 
 @app.post("/generate-complete-repo-docs")
-def generate_complete_repo_docs(repo_path: str, output_file: str = "Complete_Repository_Documentation.md"):
+def generate_complete_repo_docs(repo_path: str, output_file: str = "Complete_Repository_Documentation.md", target_format: str = "markdown"):
     """Generate comprehensive documentation for entire repository"""
     try:
         if not os.path.exists(repo_path):
@@ -284,29 +289,29 @@ def generate_complete_repo_docs(repo_path: str, output_file: str = "Complete_Rep
                     code_structure = repo_scanner.extract_class_structure(file_info["full_path"], file_info["language"])
                     
                     if functions or code_structure.get('classes'):
-                        doc_content += f"### {file_info['file_path']}\\n"
-                        doc_content += f"**Language:** {file_info['language'].title()}\\n"
-                        doc_content += f"**Type:** {file_info.get('file_type', 'other').title()}\\n\\n"
+                        doc_content += f"### {file_info['file_path']}\n"
+                        doc_content += f"**Language:** {file_info['language'].title()}\n"
+                        doc_content += f"**Type:** {file_info.get('file_type', 'other').title()}\n\n"
                         
                         if code_structure.get('classes'):
-                            doc_content += "**Classes:**\\n"
+                            doc_content += "**Classes:**\n"
                             for cls in code_structure['classes'][:5]:
-                                doc_content += f"- `{cls['name']}` (line {cls['line']})\\n"
+                                doc_content += f"- `{cls['name']}` (line {cls['line']})\n"
                                 if cls.get('methods'):
                                     for method in cls['methods'][:3]:
-                                        doc_content += f"  - `{method['name']}()` (line {method['line']})\\n"
-                            doc_content += "\\n"
+                                        doc_content += f"  - `{method['name']}()` (line {method['line']})\n"
+                            doc_content += "\n"
                         
                         # Generate AI docs for key functions
                         for func in functions[:2]:
                             try:
                                 func.commits = []
-                                summary = doc_generator.generate_function_doc(func)
-                                doc_content += f"#### {func.name}\\n{summary}\\n\\n"
+                                summary = doc_generator.generate_function_doc(func, target_format)
+                                doc_content += f"#### {func.name}\n{summary}\n\n"
                             except Exception:
-                                doc_content += f"#### {func.name}\\n**Parameters:** {', '.join(func.params) if func.params else 'None'}\\n**Lines:** {func.lineno}-{func.end_lineno}\\n\\n"
+                                doc_content += f"#### {func.name}\n**Parameters:** {', '.join(func.params) if func.params else 'None'}\n**Lines:** {func.lineno}-{func.end_lineno}\n\n"
                         
-                        doc_content += "---\\n\\n"
+                        doc_content += "---\n\n"
                         documented_files += 1
             except Exception as e:
                 print(f"Error processing {file_info['file_path']}: {e}")
@@ -343,8 +348,13 @@ def generate_complete_repo_docs(repo_path: str, output_file: str = "Complete_Rep
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Repository documentation failed: {str(e)}")
 
+@app.post("/generate-complete-repo-docs-for-word")
+def generate_complete_repo_docs_for_word(repo_path: str, output_file: str = "Complete_Repository_Documentation_Word.md"):
+    """Generate comprehensive documentation specifically formatted for Word conversion"""
+    return generate_complete_repo_docs(repo_path, output_file, target_format="word")
+
 @app.post("/generate-individual-docs")
-def generate_individual_docs(repo_path: str, language: str = "java"):
+def generate_individual_docs(repo_path: str, language: str = "java", target_format: str = "markdown"):
     """Generate separate documentation file for each code file in the repository"""
     try:
         if not os.path.exists(repo_path):
@@ -391,8 +401,8 @@ Language: {file_info['language']}
                 for func in functions:
                     try:
                         func.commits = []  # Skip git analysis for performance
-                        summary = doc_generator.generate_function_doc(func)
-                        file_doc_content += f"{summary}\\n\\n---\\n\\n"
+                        summary = doc_generator.generate_function_doc(func, target_format)
+                        file_doc_content += f"{summary}\n\n---\n\n"
                     except Exception:
                         file_doc_content += f"""# {func.name}
 
