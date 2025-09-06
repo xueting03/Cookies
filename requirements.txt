@@ -23,6 +23,10 @@ javalang==0.13.0
 # OpenAI for LLM documentation generation (v0.28 for compatibility)
 openai==0.28.1
 
+# LangChain for QnA
+langchain==0.1.17
+langchain-community==0.0.37
+
 # Development dependencies (optional)
 # pytest==7.4.3
 # pytest-asyncio==0.21.1
