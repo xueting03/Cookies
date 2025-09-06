@@ -29,25 +29,42 @@ class DocGenerator:
         else:
             commit_links = "No recent commits found"
         
-        file_link = f"[{func.file_path}#L{func.lineno}-L{func.end_lineno}]({func.file_path}#L{func.lineno}-L{func.end_lineno})"
+        # Generate different types of links
+        file_links = self._generate_file_links(func)
         
         # Try to use OpenAI API if available, otherwise fall back to template
         if self.api_key:
             try:
-                return self._generate_openai_docs(func, file_link, commit_links)
+                return self._generate_openai_docs(func, file_links, commit_links)
             except Exception as e:
-                return self._generate_template_docs(func, file_link, commit_links, f"OpenAI API failed: {str(e)}")
+                return self._generate_template_docs(func, file_links, commit_links, f"OpenAI API failed: {str(e)}")
         else:
-            return self._generate_template_docs(func, file_link, commit_links, "No valid OpenAI API key found")
+            return self._generate_template_docs(func, file_links, commit_links, "No valid OpenAI API key found")
     
-    def _generate_openai_docs(self, func: FunctionInfo, file_link: str, commit_links: str) -> str:
+    def _generate_file_links(self, func: FunctionInfo) -> dict:
+        """Generate various types of clickable links for the function"""
+        file_path = func.file_path.replace('\\', '/')
+        
+        # Convert to absolute path for VS Code links
+        abs_path = os.path.abspath(file_path).replace('\\', '/')
+        
+        return {
+            'vscode_file': f"vscode://file/{abs_path}",
+            'vscode_line': f"vscode://file/{abs_path}:{func.lineno}",
+            'vscode_range': f"vscode://file/{abs_path}:{func.lineno}",
+            'file_protocol': f"file:///{abs_path}",
+            'relative_path': file_path,
+            'github_line': f"#L{func.lineno}" + (f"-L{func.end_lineno}" if func.end_lineno != func.lineno else "")
+        }
+    
+    def _generate_openai_docs(self, func: FunctionInfo, file_links: dict, commit_links: str) -> str:
         """Generate documentation using OpenAI API (v0.28 syntax)"""
         prompt = f"""Generate professional starter documentation for this function in markdown format.
 
 Function Name: {func.name}
 Parameters: {', '.join(func.params) if func.params else 'None'}
 Docstring: {func.docstring or 'None'}
-File: {file_link}
+File: {file_links['relative_path']} (lines {func.lineno}-{func.end_lineno})
 Recent Commits: {commit_links}
 
 Please provide:
@@ -70,12 +87,31 @@ Format in clean markdown with proper headings."""
                 max_tokens=500
             )
             
-            return response.choices[0].message.content
+            # Add the enhanced links section to the AI-generated content
+            ai_content = response.choices[0].message.content
+            
+            links_section = f"""
+
+## 🔗 Quick Access
+
+### Open in Editor
+- 🚀 [**Open in VS Code**]({file_links['vscode_file']}) - Open file
+- 📍 [**Jump to Function**]({file_links['vscode_line']}) - Go to line {func.lineno}
+- 📄 [**Open in Default Editor**]({file_links['file_protocol']}) - System default
+
+### File Information
+- 📁 **File**: `{file_links['relative_path']}`
+- 📏 **Lines**: {func.lineno}-{func.end_lineno}
+- 🔢 **Function Length**: {func.end_lineno - func.lineno + 1} lines
+"""
+            
+            return ai_content + links_section
+            
         except Exception as e:
             raise Exception(f"OpenAI API call failed: {str(e)}")
     
     @staticmethod
-    def _generate_template_docs(func: FunctionInfo, file_link: str, commit_links: str, error: str = None) -> str:
+    def _generate_template_docs(func: FunctionInfo, file_links: dict, commit_links: str, error: str = None) -> str:
         """Generate template documentation when LLM is not available"""
         error_section = f"\n## Note\nLLM API not configured or failed: {error}\n" if error else ""
         
@@ -91,13 +127,25 @@ Format in clean markdown with proper headings."""
         else:
             docstring_section = "\n## Description\n\n[Add description here]\n"
         
+        # Enhanced file links section
+        links_section = f"""## 🔗 Quick Access
+
+### Open in Editor
+- 🚀 [**Open in VS Code**]({file_links['vscode_file']}) - Open file
+- 📍 [**Jump to Function**]({file_links['vscode_line']}) - Go to line {func.lineno}
+- 📄 [**Open in Default Editor**]({file_links['file_protocol']}) - System default
+
+### File Information
+- 📁 **File**: `{file_links['relative_path']}`
+- 📏 **Lines**: {func.lineno}-{func.end_lineno}
+- 🔢 **Function Length**: {func.end_lineno - func.lineno + 1} lines
+"""
+        
         return f"""# {func.name}
 {error_section}
 {docstring_section}
 {params_section}
-## File Location
-
-{file_link}
+{links_section}
 
 ## Recent Commits
 
@@ -105,13 +153,14 @@ Format in clean markdown with proper headings."""
 
 ## Usage Example
 
-```python
-# Example usage needed
-result = {func.name}({', '.join(func.params) if func.params else ''})
+```java
+// Example usage needed
+{func.name}({', '.join(func.params) if func.params else ''});
 ```
 
 ## Notes
 
 - Function defined at lines {func.lineno}-{func.end_lineno}
 - Auto-generated documentation
+- Click the links above to jump directly to the code!
 """
