@@ -18,7 +18,7 @@ class DocGenerator:
         if self.api_key:
             openai.api_key = self.api_key
     
-    def generate_function_doc(self, func: FunctionInfo) -> str:
+    def generate_function_doc(self, func: FunctionInfo, target_format: str = "markdown") -> str:
         # Safe commit links generation
         commit_links = ""
         if func.commits:
@@ -29,35 +29,52 @@ class DocGenerator:
         else:
             commit_links = "No recent commits found"
         
-        # Generate different types of links
-        file_links = self._generate_file_links(func)
+        # Generate format-specific links
+        file_links = self._generate_file_links(func, target_format)
         
         # Try to use OpenAI API if available, otherwise fall back to template
         if self.api_key:
             try:
-                return self._generate_openai_docs(func, file_links, commit_links)
+                return self._generate_openai_docs(func, file_links, commit_links, target_format)
             except Exception as e:
-                return self._generate_template_docs(func, file_links, commit_links, f"OpenAI API failed: {str(e)}")
+                return self._generate_template_docs(func, file_links, commit_links, target_format, f"OpenAI API failed: {str(e)}")
         else:
-            return self._generate_template_docs(func, file_links, commit_links, "No valid OpenAI API key found")
+            return self._generate_template_docs(func, file_links, commit_links, target_format, "No valid OpenAI API key found")
     
-    def _generate_file_links(self, func: FunctionInfo) -> dict:
-        """Generate various types of clickable links for the function"""
+    def _generate_file_links(self, func: FunctionInfo, target_format: str = "markdown") -> dict:
+        """Generate format-specific clickable links for the function"""
         file_path = func.file_path.replace('\\', '/')
         
         # Convert to absolute path for VS Code links
         abs_path = os.path.abspath(file_path).replace('\\', '/')
+        folder_path = os.path.dirname(abs_path)
         
-        return {
-            'vscode_file': f"vscode://file/{abs_path}",
-            'vscode_line': f"vscode://file/{abs_path}:{func.lineno}",
-            'vscode_range': f"vscode://file/{abs_path}:{func.lineno}",
-            'file_protocol': f"file:///{abs_path}",
+        base_links = {
             'relative_path': file_path,
-            'github_line': f"#L{func.lineno}" + (f"-L{func.end_lineno}" if func.end_lineno != func.lineno else "")
+            'abs_path': abs_path,
+            'folder_path': folder_path
         }
+        
+        if target_format.lower() == "word":
+            # Only Word-compatible links (file protocol only)
+            return {
+                **base_links,
+                'file_url': f"file:///{abs_path}",
+                'folder_url': f"file:///{folder_path}"
+            }
+        else:
+            # Full markdown links including VS Code
+            return {
+                **base_links,
+                'vscode_file': f"vscode://file/{abs_path}",
+                'vscode_line': f"vscode://file/{abs_path}:{func.lineno}",
+                'vscode_range': f"vscode://file/{abs_path}:{func.lineno}",
+                'file_url': f"file:///{abs_path}",
+                'folder_url': f"file:///{folder_path}",
+                'github_line': f"#L{func.lineno}" + (f"-L{func.end_lineno}" if func.end_lineno != func.lineno else "")
+            }
     
-    def _generate_openai_docs(self, func: FunctionInfo, file_links: dict, commit_links: str) -> str:
+    def _generate_openai_docs(self, func: FunctionInfo, file_links: dict, commit_links: str, target_format: str = "markdown") -> str:
         """Generate documentation using OpenAI API (v0.28 syntax)"""
         prompt = f"""Generate professional starter documentation for this function in markdown format.
 
@@ -87,31 +104,55 @@ Format in clean markdown with proper headings."""
                 max_tokens=500
             )
             
-            # Add the enhanced links section to the AI-generated content
+            # Add the format-specific links section to the AI-generated content
             ai_content = response.choices[0].message.content
             
-            links_section = f"""
-
-## 🔗 Quick Access
-
-### Open in Editor
-- 🚀 [**Open in VS Code**]({file_links['vscode_file']}) - Open file
-- 📍 [**Jump to Function**]({file_links['vscode_line']}) - Go to line {func.lineno}
-- 📄 [**Open in Default Editor**]({file_links['file_protocol']}) - System default
-
-### File Information
-- 📁 **File**: `{file_links['relative_path']}`
-- 📏 **Lines**: {func.lineno}-{func.end_lineno}
-- 🔢 **Function Length**: {func.end_lineno - func.lineno + 1} lines
-"""
+            links_section = self._generate_links_section(func, file_links, target_format)
             
             return ai_content + links_section
             
         except Exception as e:
             raise Exception(f"OpenAI API call failed: {str(e)}")
     
+    def _generate_links_section(self, func: FunctionInfo, file_links: dict, target_format: str) -> str:
+        """Generate format-specific links section"""
+        if target_format.lower() == "word":
+            # Word-only links
+            return f"""
+
+## 🔗 Quick Access
+
+### Open Files
+- 📄 [**Open File**]({file_links['file_url']}) - Open in default editor
+- 📂 [**Open Folder**]({file_links['folder_url']}) - Open containing folder
+
+### File Information
+- � **File**: `{file_links['relative_path']}`
+- �📏 **Lines**: {func.lineno}-{func.end_lineno}
+- 🔢 **Function Length**: {func.end_lineno - func.lineno + 1} lines
+"""
+        else:
+            # Markdown with VS Code links
+            return f"""
+
+## 🔗 Quick Access
+
+### Open in Editor
+- MARKDOWN:
+- 🚀 [**Open in VS Code**]({file_links['vscode_file']}) - Open file
+- 📍 [**Jump to Function**]({file_links['vscode_line']}) - Go to line {func.lineno}
+- WORD DOC:
+- 📄 [**Open File**]({file_links['file_url']}) - Open in default editor
+- 📂 [**Open Folder**]({file_links['folder_url']}) - Open containing folder
+
+### File Information
+- 📁 **File**: `{file_links['relative_path']}`
+- 📏 **Lines**: {func.lineno}-{func.end_lineno}
+- 🔢 **Function Length**: {func.end_lineno - func.lineno + 1} lines
+"""
+    
     @staticmethod
-    def _generate_template_docs(func: FunctionInfo, file_links: dict, commit_links: str, error: str = None) -> str:
+    def _generate_template_docs(func: FunctionInfo, file_links: dict, commit_links: str, target_format: str = "markdown", error: str = None) -> str:
         """Generate template documentation when LLM is not available"""
         error_section = f"\n## Note\nLLM API not configured or failed: {error}\n" if error else ""
         
