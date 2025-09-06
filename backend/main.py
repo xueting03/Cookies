@@ -551,7 +551,7 @@ def test_all_apis():
     try:
         # Test parameters for Employee Management System
         test_file = "src/main/java/com/example/EmployeeManagementSystem/model/Employee.java"
-        test_repo = r"C:\Users\User\VisualStudio\Employee-Management-Sys\EmployeeManagementSystem"
+        test_repo = r"C:\Users\User\Documents\Clone_GithubProject\Employee-Management-Sys\EmployeeManagementSystem"
         test_language = "java"
         
         results = {}
