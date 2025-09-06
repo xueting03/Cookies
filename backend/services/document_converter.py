@@ -1,26 +1,49 @@
-"""
-Document conversion service for converting markdown files to Word format only.
-PDF conversion removed due to dependency issues.
-"""
-
-import os
+import subprocess
 from docx import Document
 from docx.shared import Inches
+import os
 import re
 from typing import Optional
-import logging
 
 # Configure logging
+import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class DocumentConverter:
     """Service for converting markdown documents to Word format only."""
-    
     def __init__(self):
         """Initialize the document converter for Word documents only."""
         logger.info("DocumentConverter initialized for Word conversion only")
-    
+
+    def convert_to_word(self, markdown_file_path: str, output_path: Optional[str] = None) -> str:
+        # ...existing code...
+        pass
+
+    def insert_mermaid_diagram_to_docx(self, mermaid_code: str, docx_path: str, image_path: str = "diagram.png"):
+        """
+        Render Mermaid diagram to image and insert at the end of a docx file.
+        """
+        # Save mermaid code to temp file
+        mermaid_file = "temp_mermaid.mmd"
+        with open(mermaid_file, "w", encoding="utf-8") as f:
+            f.write(mermaid_code)
+
+        # Render to PNG using mermaid-cli
+        subprocess.run(["mmdc", "-i", mermaid_file, "-o", image_path], check=True)
+
+        # Insert image into docx
+        doc = Document(docx_path)
+        doc.add_picture(image_path, width=Inches(6))
+        doc.save(docx_path)
+
+        # Clean up temp files
+        os.remove(mermaid_file)
+        os.remove(image_path)
+    def __init__(self):
+        """Initialize the document converter for Word documents only."""
+        logger.info("DocumentConverter initialized for Word conversion only")
+
     def convert_to_word(self, markdown_file_path: str, output_path: Optional[str] = None) -> str:
         """
         Convert markdown file to Word document.

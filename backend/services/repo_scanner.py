@@ -7,6 +7,88 @@ from pathlib import Path
 import json
 
 class RepoScanner:
+    def extract_class_relationships(self, repo_path: str, language: str = "java") -> dict:
+        """
+        Extract class relationships, attributes, and method signatures for visualization.
+        Returns: { 'classes': {name: {'parents': [...], 'associations': [...], 'attributes': [...], 'methods': [...]}} }
+        """
+        import re
+        relationships = {"classes": {}}
+        class_names = set()
+        # First pass: collect all class names
+        for root, dirs, files in os.walk(repo_path):
+            for file in files:
+                if language == "java" and file.endswith(".java"):
+                    file_path = os.path.join(root, file)
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        class_matches = re.findall(r'class\s+(\w+)', content)
+                        for cname in class_matches:
+                            class_names.add(cname)
+                    except Exception:
+                        continue
+        # Second pass: extract relationships and details
+        for root, dirs, files in os.walk(repo_path):
+            for file in files:
+                if language == "java" and file.endswith(".java"):
+                    file_path = os.path.join(root, file)
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        # Find class declarations
+                        class_decl = re.findall(r'class\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([\w, ]+))?', content)
+                        for match in class_decl:
+                            class_name = match[0]
+                            parent = match[1] if match[1] else None
+                            implements = [i.strip() for i in match[2].split(',')] if match[2] else []
+                            if class_name not in relationships["classes"]:
+                                relationships["classes"][class_name] = {"parents": [], "associations": [], "attributes": [], "methods": []}
+                            if parent:
+                                relationships["classes"][class_name]["parents"].append(parent)
+                            for impl in implements:
+                                relationships["classes"][class_name]["parents"].append(impl)
+                        # Find attributes (fields)
+                        attr_matches = re.findall(r'(public|private|protected)?\s*([\w<>\[\]]+)\s+(\w+)\s*;', content)
+                        for _, attr_type, attr_name in attr_matches:
+                            relationships["classes"][class_name]["attributes"].append(f"{attr_type} {attr_name}")
+                            if attr_type in class_names and attr_type != class_name:
+                                relationships["classes"][class_name]["associations"].append(attr_type)
+                        # Find method signatures and parameter associations
+                        method_matches = re.findall(r'(public|private|protected)?\s*([\w<>\[\]]+)\s+(\w+)\s*\(([^)]*)\)', content)
+                        for _, ret_type, method_name, params in method_matches:
+                            param_types = [p.strip().split()[0] for p in params.split(',') if p.strip()]
+                            param_str = ', '.join([p.strip() for p in params.split(',') if p.strip()])
+                            relationships["classes"][class_name]["methods"].append(f"{ret_type} {method_name}({param_str})")
+                            for ptype in param_types:
+                                if ptype in class_names and ptype != class_name:
+                                    relationships["classes"][class_name]["associations"].append(ptype)
+                    except Exception:
+                        continue
+        # Remove duplicate associations and attributes
+        for cls in relationships["classes"]:
+            relationships["classes"][cls]["associations"] = list(set(relationships["classes"][cls]["associations"]))
+            relationships["classes"][cls]["attributes"] = list(set(relationships["classes"][cls]["attributes"]))
+        return relationships
+
+    def generate_mermaid_class_diagram(self, relationships: dict) -> str:
+        """
+        Generate a detailed Mermaid class diagram from relationships dict.
+        """
+        lines = ["classDiagram"]
+        for cls, info in relationships.get('classes', {}).items():
+            for parent in info.get('parents', []):
+                lines.append(f"{parent} <|-- {cls}")
+            for assoc in info.get('associations', []):
+                lines.append(f"{cls} --> {assoc}")
+            # Add class block with attributes and methods
+            lines.append(f"class {cls} {{")
+            for attr in info.get('attributes', []):
+                lines.append(f"  {attr}")
+            for method in info.get('methods', []):
+                lines.append(f"  {method}")
+            lines.append("}")
+        return "\n".join(lines)
     def __init__(self):
         self.supported_extensions = {
             '.py': 'python',
@@ -22,6 +104,56 @@ class RepoScanner:
             '.yml': 'yaml',
             '.yaml': 'yaml'
         }
+        def extract_class_relationships(self, repo_path: str, language: str = "java") -> dict:
+            """
+            Extract class relationships (inheritance, associations) for visualization.
+            Returns: { 'classes': {name: {'parents': [...], 'associations': [...]}} }
+            """
+            import re
+            relationships = {"classes": {}}
+            for root, dirs, files in os.walk(repo_path):
+                for file in files:
+                    if language == "java" and file.endswith(".java"):
+                        file_path = os.path.join(root, file)
+                        try:
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                content = f.read()
+                            # Find class declarations
+                            class_matches = re.findall(r'class\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([\w, ]+))?', content)
+                            for match in class_matches:
+                                class_name = match[0]
+                                parent = match[1] if match[1] else None
+                                implements = [i.strip() for i in match[2].split(',')] if match[2] else []
+                                if class_name not in relationships["classes"]:
+                                    relationships["classes"][class_name] = {"parents": [], "associations": []}
+                                if parent:
+                                    relationships["classes"][class_name]["parents"].append(parent)
+                                for impl in implements:
+                                    relationships["classes"][class_name]["parents"].append(impl)
+                            # Find associations (fields of other class types)
+                            field_matches = re.findall(r'(\w+)\s+(\w+);', content)
+                            for type_name, var_name in field_matches:
+                                # Only associate with known classes
+                                if type_name in relationships["classes"] and type_name != class_name:
+                                    relationships["classes"][class_name]["associations"].append(type_name)
+                        except Exception:
+                            continue
+                    # Add support for other languages here if needed
+            return relationships
+
+        def generate_mermaid_class_diagram(self, relationships: dict) -> str:
+            """
+            Generate a Mermaid class diagram from relationships dict.
+            """
+            lines = ["```mermaid", "classDiagram"]
+            for cls, info in relationships.get('classes', {}).items():
+                for parent in info.get('parents', []):
+                    lines.append(f"{parent} <|-- {cls}")
+                for assoc in info.get('associations', []):
+                    lines.append(f"{cls} --> {assoc}")
+                lines.append(f"class {cls}")
+            lines.append("```")
+            return "\n".join(lines)
     
     def scan_repository(self, repo_path: str) -> Dict[str, Any]:
         """Scan entire repository and return structure analysis"""
